@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEXUS FACE // AI Tracking System v4.7</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* ===== CSS VARIABLES ===== */
+        :root {
+            --bg: #06060e;
+            --bg2: #0a0a18;
+            --cyan: #00f0ff;
+            --blue: #0055ff;
+            --purple: #b026ff;
+            --magenta: #ff0066;
+            --red: #ff0040;
+            --green: #00ff88;
+            --yellow: #ffcc00;
+            --text: #d0d0ee;
+            --dim: #4a4a6a;
+            --glass: rgba(8, 8, 22, 0.75);
+            --glass-border: rgba(0, 240, 255, 0.12);
+        }
+
+        /* ===== RESET & BASE ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Share Tech Mono', monospace;
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--cyan); border-radius: 2px; }
+
+        /* ===== LOADING SCREEN ===== */
+        #loader {
+            position: fixed; inset: 0; z-index: 1000;
+            background: var(--bg);
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column;
+            transition: opacity 0.8s, visibility 0.8s;
+        }
+        #loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        .loader-logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: clamp(1.6rem, 5vw, 2.8rem);
+            font-weight: 900;
+            letter-spacing: 6px;
+            color: var(--cyan);
+            text-shadow: 0 0 30px rgba(0,240,255,0.5), 0 0 60px rgba(0,240,255,0.2);
+            margin-bottom: 8px;
+        }
+        .loader-logo span { color: var(--purple); text-shadow: 0 0 30px rgba(176,38,255,0.5); }
+        .loader-sub {
+            font-size: 0.7rem;
+            color: var(--dim);
+            letter-spacing: 4px;
+            margin-bottom: 40px;
+        }
+        #terminal {
+            width: min(500px, 85vw);
+            height: 180px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            padding: 14px;
+            overflow-y: auto;
+            margin-bottom: 24px;
+            font-size: 0.72rem;
+            line-height: 1.7;
+        }
+        #terminal .log-line { opacity: 0; animation: fadeInLog 0.3s forwards; }
+        #terminal .ok { color: var(--green); }
+        #terminal .warn { color: var(--yellow); }
+        #terminal .info { color: var(--cyan); }
+        @keyframes fadeInLog { to { opacity: 1; } }
+        .progress-wrap {
+            width: min(500px, 85vw);
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+        #progressBar {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            border-radius: 3px;
+            transition: width 0.6s ease;
+            box-shadow: 0 0 12px var(--cyan);
+        }
+        #progressText {
+            position: absolute; right: 0; top: -20px;
+            font-size: 0.7rem; color: var(--cyan);
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* ===== BACKGROUND LAYERS ===== */
+        #bgCanvas {
+            position: fixed; inset: 0; z-index: 0;
+            pointer-events: none;
+        }
+        .grid-overlay {
+            position: fixed; inset: 0; z-index: 1;
+            background-image:
+                linear-gradient(rgba(0,240,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,240,255,0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            animation: gridShift 20s linear infinite;
+        }
+        @keyframes gridShift { to { background-position: 50px 50px; } }
+        .gradient-orb {
+            position: fixed; border-radius: 50%; filter: blur(100px);
+            pointer-events: none; z-index: 0;
+        }
+        .orb1 { width: 400px; height: 400px; background: rgba(0,240,255,0.06); top: -100px; left: -100px; animation: orbFloat1 15s ease-in-out infinite; }
+        .orb2 { width: 350px; height: 350px; background: rgba(176,38,255,0.05); bottom: -100px; right: -100px; animation: orbFloat2 18s ease-in-out infinite; }
+        .orb3 { width: 250px; height: 250px; background: rgba(255,0,102,0.04); top: 50%; left: 50%; animation: orbFloat3 12s ease-in-out infinite; }
+        @keyframes orbFloat1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(80px,60px); } }
+        @keyframes orbFloat2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-60px,-80px); } }
+        @keyframes orbFloat3 { 0%,100% { transform: translate(-50%,-50%); } 50% { transform: translate(-30%,-70%); } }
+
+        /* ===== MAIN APP LAYOUT ===== */
+        #app {
+            position: relative; z-index: 2;
+            width: 100%; height: 100%;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.6s;
+        }
+        #app.visible { display: flex; opacity: 1; }
+        .main-layout {
+            display: flex;
+            width: 100%; height: 100%;
+            gap: 0;
+        }
+
+        /* ===== GLASS PANELS ===== */
+        .panel {
+            width: 280px;
+            min-width: 280px;
+            height: 100%;
+            background: var(--glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-right: 1px solid var(--glass-border);
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .panel.right { border-right: none; border-left: 1px solid var(--glass-border); }
+        .panel-header {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: var(--cyan);
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--glass-border);
+            text-shadow: 0 0 10px rgba(0,240,255,0.3);
+        }
+        .panel-block {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .stat-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 4px 0;
+            font-size: 0.72rem;
+        }
+        .stat-label { color: var(--dim); }
+        .stat-value { color: var(--cyan); font-weight: bold; }
+        .stat-value.red { color: var(--red); }
+        .stat-value.green { color: var(--green); }
+        .stat-value.purple { color: var(--purple); }
+
+        /* ===== VIDEO CONTAINER ===== */
+        .video-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 16px;
+            min-width: 0;
+        }
+        .video-frame {
+            position: relative;
+            width: 100%;
+            max-width: 720px;
+            aspect-ratio: 4/3;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 0 40px rgba(0,240,255,0.08), inset 0 0 40px rgba(0,0,0,0.5);
+        }
+        #webcam, #overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            transform: scaleX(-1);
+        }
+        #webcam { object-fit: cover; }
+
+        /* HUD Corner Brackets */
+        .hud-corner {
+            position: absolute; width: 30px; height: 30px;
+            pointer-events: none; z-index: 5;
+        }
+        .hud-corner::before, .hud-corner::after {
+            content: ''; position: absolute;
+            background: var(--cyan);
+            box-shadow: 0 0 6px var(--cyan);
+        }
+        .hud-corner.tl { top: 0; left: 0; }
+        .hud-corner.tl::before { top: 0; left: 0; width: 30px; height: 2px; }
+        .hud-corner.tl::after { top: 0; left: 0; width: 2px; height: 30px; }
+        .hud-corner.tr { top: 0; right: 0; }
+        .hud-corner.tr::before { top: 0; right: 0; width: 30px; height: 2px; }
+        .hud-corner.tr::after { top: 0; right: 0; width: 2px; height: 30px; }
+        .hud-corner.bl { bottom: 0; left: 0; }
+        .hud-corner.bl::before { bottom: 0; left: 0; width: 30px; height: 2px; }
+        .hud-corner.bl::after { bottom: 0; left: 0; width: 2px; height: 30px; }
+        .hud-corner.br { bottom: 0; right: 0; }
+        .hud-corner.br::before { bottom: 0; right: 0; width: 30px; height: 2px; }
+        .hud-corner.br::after { bottom: 0; right: 0; width: 2px; height: 30px; }
+
+        /* Scan Line */
+        .scan-line-el {
+            position: absolute; left: 0; right: 0;
+            height: 2px; z-index: 4;
+            background: linear-gradient(90deg, transparent 0%, var(--cyan) 30%, var(--cyan) 70%, transparent 100%);
+            box-shadow: 0 0 20px var(--cyan), 0 -5px 30px rgba(0,240,255,0.1), 0 5px 30px rgba(0,240,255,0.1);
+            opacity: 0.6;
+            animation: scanMove 3s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes scanMove { 0% { top: -2px; } 100% { top: 100%; } }
+
+        /* Rotating Rings */
+        .hud-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px dashed rgba(0,240,255,0.12);
+            top: 50%; left: 50%;
+            pointer-events: none;
+            z-index: 3;
+        }
+        .hud-ring-1 {
+            width: 55%; aspect-ratio: 1;
+            transform: translate(-50%,-50%);
+            animation: ringRotate 20s linear infinite;
+        }
+        .hud-ring-2 {
+            width: 75%; aspect-ratio: 1;
+            transform: translate(-50%,-50%);
+            border-color: rgba(176,38,255,0.08);
+            animation: ringRotate 35s linear infinite reverse;
+        }
+        @keyframes ringRotate { to { transform: translate(-50%,-50%) rotate(360deg); } }
+
+        /* Status Badge */
+        .status-badge {
+            position: absolute;
+            top: 12px; left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.55rem;
+            font-weight: 700;
+            letter-spacing: 3px;
+            padding: 4px 16px;
+            border-radius: 2px;
+            z-index: 6;
+            pointer-events: none;
+            transition: all 0.3s;
+        }
+        .status-badge.scanning {
+            color: var(--yellow);
+            background: rgba(255,204,0,0.1);
+            border: 1px solid rgba(255,204,0,0.3);
+            animation: badgePulse 1.5s ease-in-out infinite;
+        }
+        .status-badge.locked {
+            color: var(--green);
+            background: rgba(0,255,136,0.1);
+            border: 1px solid rgba(0,255,136,0.4);
+            box-shadow: 0 0 20px rgba(0,255,136,0.2);
+        }
+        .status-badge.lost {
+            color: var(--red);
+            background: rgba(255,0,64,0.1);
+            border: 1px solid rgba(255,0,64,0.4);
+            animation: badgePulse 0.5s ease-in-out infinite;
+        }
+        @keyframes badgePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Lost Face Overlay */
+        .lost-overlay {
+            position: absolute; inset: 0; z-index: 10;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            pointer-events: none;
+            opacity: 0; transition: opacity 0.25s;
+        }
+        .lost-overlay.active { opacity: 1; }
+        .lost-overlay::before {
+            content: ''; position: absolute; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,0,64,0.02) 2px, rgba(255,0,64,0.02) 4px);
+            animation: noiseScroll 0.3s steps(8) infinite;
+        }
+        @keyframes noiseScroll { to { background-position: 0 80px; } }
+        .lost-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: clamp(1.4rem, 4vw, 2.2rem);
+            font-weight: 900;
+            color: var(--red);
+            text-shadow: 0 0 30px var(--red), 0 0 60px rgba(255,0,64,0.4);
+            animation: flicker 0.12s steps(2) infinite;
+            z-index: 1;
+        }
+        .lost-sub {
+            font-size: 0.7rem;
+            color: rgba(255,0,64,0.6);
+            letter-spacing: 4px;
+            margin-top: 8px;
+            z-index: 1;
+        }
+        @keyframes flicker { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+        /* Face Lock Flash */
+        .lock-flash {
+            position: absolute; inset: 0; z-index: 8;
+            background: radial-gradient(ellipse at center, rgba(0,255,136,0.15), transparent 70%);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .lock-flash.active { opacity: 1; }
+
+        /* ===== HEAD DIRECTION INDICATOR ===== */
+        .head-indicator {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 100px; height: 100px;
+            margin: 8px auto;
+            gap: 3px;
+        }
+        .head-cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            color: var(--dim);
+            background: rgba(255,255,255,0.02);
+            border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+        .head-cell.active {
+            color: var(--cyan);
+            background: rgba(0,240,255,0.1);
+            border-color: rgba(0,240,255,0.4);
+            box-shadow: 0 0 10px rgba(0,240,255,0.2);
+            text-shadow: 0 0 6px var(--cyan);
+        }
+        .head-cell.center-dot {
+            border-radius: 50%;
+            background: rgba(0,240,255,0.05);
+            border: 1px solid rgba(0,240,255,0.15);
+        }
+
+        /* ===== EMOTION BARS ===== */
+        .emo-bar-wrap {
+            display: flex; align-items: center; gap: 8px;
+            padding: 3px 0;
+        }
+        .emo-label {
+            width: 65px;
+            font-size: 0.62rem;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .emo-bar-bg {
+            flex: 1; height: 6px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .emo-bar-fill {
+            height: 100%; width: 0%;
+            border-radius: 3px;
+            transition: width 0.3s ease, background 0.3s;
+        }
+        .emo-val {
+            width: 36px;
+            text-align: right;
+            font-size: 0.62rem;
+            color: var(--dim);
+        }
+
+        /* ===== SMILE / BLIND INDICATORS ===== */
+        .smile-bar-wrap { margin-top: 6px; }
+        .smile-bar-bg {
+            width: 100%; height: 8px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .smile-bar-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            border-radius: 4px;
+            transition: width 0.2s;
+            box-shadow: 0 0 10px rgba(0,255,136,0.3);
+        }
+        .smile-label {
+            font-size: 0.65rem;
+            color: var(--dim);
+            display: flex; justify-content: space-between;
+        }
+        .smile-label.detected { color: var(--green); text-shadow: 0 0 8px rgba(0,255,136,0.4); }
+        .blink-count {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--cyan);
+            text-shadow: 0 0 20px rgba(0,240,255,0.3);
+            text-align: center;
+        }
+        .blink-label {
+            font-size: 0.6rem;
+            color: var(--dim);
+            text-align: center;
+            letter-spacing: 2px;
+        }
+
+        /* ===== MINI TERMINAL ===== */
+        .mini-terminal {
+            width: 100%; max-width: 720px;
+            height: 70px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid var(--glass-border);
+            border-radius: 4px;
+            margin-top: 10px;
+            padding: 8px 10px;
+            overflow-y: auto;
+            font-size: 0.6rem;
+            line-height: 1.6;
+            color: var(--dim);
+        }
+        .mini-terminal .log-ok { color: var(--green); }
+        .mini-terminal .log-warn { color: var(--yellow); }
+        .mini-terminal .log-err { color: var(--red); }
+        .mini-terminal .log-info { color: var(--cyan); }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1100px) {
+            .panel { width: 220px; min-width: 220px; padding: 12px; }
+        }
+        @media (max-width: 860px) {
+            .main-layout { flex-direction: column; }
+            .panel {
+                width: 100%; min-width: 100%;
+                height: auto; max-height: 200px;
+                flex-direction: row;
+                flex-wrap: wrap;
+                border-right: none !important;
+                border-left: none !important;
+                border-bottom: 1px solid var(--glass-border);
+                gap: 8px;
+            }
+            .panel.right { order: 1; }
+            .panel-block { flex: 1; min-width: 180px; }
+            .video-section { padding: 8px; }
+            .video-frame { max-width: 100%; }
+            .mini-terminal { height: 50px; }
+            .hud-ring-1 { width: 70%; }
+            .hud-ring-2 { width: 90%; }
+        }
+        @media (max-width: 480px) {
+            .panel { padding: 8px; max-height: 160px; gap: 6px; }
+            .panel-header { font-size: 0.5rem; }
+            .stat-row { font-size: 0.62rem; }
+            .head-indicator { width: 80px; height: 80px; }
+        }
+
+        /* ===== REDUCED MOTION ===== */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+        }
+
+        /* ===== GLITCH ON VIDEO WHEN LOST ===== */
+        .video-frame.glitching #webcam {
+            animation: vidGlitch 0.15s steps(3) 2;
+            filter: saturate(1.5) hue-rotate(20deg);
+        }
+        @keyframes vidGlitch {
+            0% { transform: scaleX(-1) translate(0); }
+            33% { transform: scaleX(-1) translate(-4px, 2px); }
+            66% { transform: scaleX(-1) translate(3px, -2px); }
+            100% { transform: scaleX(-1) translate(0); }
+        }
+
+        /* ===== CAMERA ERROR ===== */
+        .cam-error {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%; text-align: center;
+            padding: 20px; color: var(--red);
+        }
+        .cam-error i { font-size: 3rem; margin-bottom: 16px; }
+        .cam-error p { color: var(--dim); font-size: 0.8rem; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <!-- ===== LOADING SCREEN ===== -->
+    <div id="loader">
+        <div class="loader-logo">NEXUS<span>FACE</span></div>
+        <div class="loader-sub">AI TRACKING SYSTEM v4.7</div>
+        <div id="terminal"></div>
+        <div class="progress-wrap">
+            <span id="progressText">0%</span>
+            <div id="progressBar"></div>
+        </div>
+    </div>
+
+    <!-- ===== BACKGROUND EFFECTS ===== -->
+    <canvas id="bgCanvas"></canvas>
+    <div class="grid-overlay"></div>
+    <div class="gradient-orb orb1"></div>
+    <div class="gradient-orb orb2"></div>
+    <div class="gradient-orb orb3"></div>
+
+    <!-- ===== MAIN APP ===== -->
+    <div id="app">
+        <div class="main-layout">
+            <!-- LEFT PANEL -->
+            <aside class="panel left" aria-label="System Statistics">
+                <div class="panel-header"><i class="fas fa-microchip" style="margin-right:6px"></i>SYSTEM STATS</div>
+                <div class="panel-block">
+                    <div class="stat-row"><span class="stat-label">FPS</span><span class="stat-value" id="statFps">0</span></div>
+                    <div class="stat-row"><span class="stat-label">LATENCY</span><span class="stat-value" id="statLatency">0 ms</span></div>
+                    <div class="stat-row"><span class="stat-label">CONFIDENCE</span><span class="stat-value green" id="statConf">--</span></div>
+                    <div class="stat-row"><span class="stat-label">STABILITY</span><span class="stat-value purple" id="statStab">--</span></div>
+                    <div class="stat-row"><span class="stat-label">RESOLUTION</span><span class="stat-value" id="statRes">--</span></div>
+                </div>
+
+                <div class="panel-header"><i class="fas fa-compass" style="margin-right:6px"></i>HEAD TRACKING</div>
+                <div class="panel-block">
+                    <div class="head-indicator" id="headGrid">
+                        <div class="head-cell" data-dir="up-left"><i class="fas fa-arrow-up" style="transform:rotate(-45deg);font-size:0.5rem"></i></div>
+                        <div class="head-cell" data-dir="up"><i class="fas fa-arrow-up" style="font-size:0.5rem"></i></div>
+                        <div class="head-cell" data-dir="up-right"><i class="fas fa-arrow-up" style="transform:rotate(45deg);font-size:0.5rem"></i></div>
+                        <div class="head-cell" data-dir="left"><i class="fas fa-arrow-left" style="font-size:0.5rem"></i></div>
+                        <div class="head-cell center-dot" data-dir="center"><i class="fas fa-circle" style="font-size:0.3rem;color:var(--cyan)"></i></div>
+                        <div class="head-cell" data-dir="right"><i class="fas fa-arrow-right" style="font-size:0.5rem"></i></div>
+                        <div class="head-cell" data-dir="down-left"><i class="fas fa-arrow-down" style="transform:rotate(45deg);font-size:0.5rem"></i></div>
+                        <div class="head-cell" data-dir="down"><i class="fas fa-arrow-down" style="font-size:0.5rem"></i></div>
+                        <div class="head-cell" data-dir="down-right"><i class="fas fa-arrow-down" style="transform:rotate(-45deg);font-size:0.5rem"></i></div>
+                    </div>
+                </div>
+
+                <div class="panel-header"><i class="fas fa-fingerprint" style="margin-right:6px"></i>BIOMETRIC DATA</div>
+                <div class="panel-block">
+                    <div class="stat-row"><span class="stat-label">SUBJECT ID</span><span class="stat-value" id="bioId">NX-4721</span></div>
+                    <div class="stat-row"><span class="stat-label">HASH</span><span class="stat-value" id="bioHash" style="font-size:0.6rem">--</span></div>
+                    <div class="stat-row"><span class="stat-label">THREAT LVL</span><span class="stat-value green" id="bioThreat">LOW</span></div>
+                    <div class="stat-row"><span class="stat-label">SCAN FREQ</span><span class="stat-value" id="bioFreq">-- Hz</span></div>
+                </div>
+            </aside>
+
+            <!-- CENTER: VIDEO -->
+            <section class="video-section" aria-label="Face Tracking View">
+                <div class="video-frame" id="videoFrame">
+                    <video id="webcam" autoplay playsinline muted></video>
+                    <canvas id="overlay"></canvas>
+                    <div class="hud-corner tl"></div>
+                    <div class="hud-corner tr"></div>
+                    <div class="hud-corner bl"></div>
+                    <div class="hud-corner br"></div>
+                    <div class="scan-line-el"></div>
+                    <div class="hud-ring hud-ring-1"></div>
+                    <div class="hud-ring hud-ring-2"></div>
+                    <div class="status-badge scanning" id="statusBadge">SCANNING...</div>
+                    <div class="lock-flash" id="lockFlash"></div>
+                    <div class="lost-overlay" id="lostOverlay">
+                        <div class="lost-title">TARGET LOST</div>
+                        <div class="lost-sub">REACQUIRING SIGNAL...</div>
+                    </div>
+                </div>
+                <div class="mini-terminal" id="miniTerminal" aria-label="Detection Log"></div>
+            </section>
+
+            <!-- RIGHT PANEL -->
+            <aside class="panel right" aria-label="Emotion Analysis">
+                <div class="panel-header"><i class="fas fa-brain" style="margin-right:6px"></i>EMOTION ANALYSIS</div>
+                <div class="panel-block" id="emotionPanel">
+                    <!-- Diisi oleh JS -->
+                </div>
+
+                <div class="panel-header"><i class="fas fa-face-smile" style="margin-right:6px"></i>SMILE DETECTION</div>
+                <div class="panel-block">
+                    <div class="smile-bar-wrap">
+                        <div class="smile-label" id="smileLabel">
+                            <span>CONFIDENCE</span><span id="smilePct">0%</span>
+                        </div>
+                        <div class="smile-bar-bg"><div class="smile-bar-fill" id="smileFill"></div></div>
+                    </div>
+                </div>
+
+                <div class="panel-header"><i class="fas fa-eye" style="margin-right:6px"></i>BLINK DETECTION</div>
+                <div class="panel-block" style="text-align:center;padding:16px">
+                    <div class="blink-count" id="blinkCount">0</div>
+                    <div class="blink-label">TOTAL BLINKS</div>
+                </div>
+
+                <div class="panel-header"><i class="fas fa-clock" style="margin-right:6px"></i>SESSION</div>
+                <div class="panel-block">
+                    <div class="stat-row"><span class="stat-label">UPTIME</span><span class="stat-value" id="sessTime">00:00</span></div>
+                    <div class="stat-row"><span class="stat-label">FRAMES</span><span class="stat-value" id="sessFrames">0</span></div>
+                    <div class="stat-row"><span class="stat-label">DETECTIONS</span><span class="stat-value green" id="sessDetections">0</span></div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- ===== FACE-API.JS ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+
+    <script>
+    /* ===========================================================
+       NEXUS FACE — AI Face Tracking System
+       Seluruh logika: deteksi wajah, landmark, emosi,
+       senyum, kedipan, arah kepala, HUD, audio, efek.
+    =========================================================== */
+
+    // ===== UTILITAS =====
+    function dist(a, b) {
+        return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+    }
+    function range(start, end) {
+        return Array.from({ length: end - start }, (_, i) => start + i);
+    }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function randomHex(len) {
+        let s = '';
+        for (let i = 0; i < len; i++) s += '0123456789ABCDEF'[Math.floor(Math.random() * 16)];
+        return s;
+    }
+    function timestamp() {
+        const d = new Date();
+        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    }
+
+    // ===== AUDIO ENGINE (Web Audio API — suara sintetis futuristik) =====
+    class SoundEngine {
+        constructor() {
+            this.ctx = null;
+            this.enabled = true;
+        }
+        init() {
+            try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+            catch(e) { this.enabled = false; }
+        }
+        _osc(freq, dur, type='sine', vol=0.08, freqEnd=null) {
+            if (!this.enabled || !this.ctx) return;
+            const o = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            o.connect(g); g.connect(this.ctx.destination);
+            o.type = type;
+            o.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, this.ctx.currentTime + dur);
+            g.gain.setValueAtTime(vol, this.ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
+            o.start(); o.stop(this.ctx.currentTime + dur);
+        }
+        scan()   { this._osc(300, 0.12, 'sine', 0.06, 1800); }
+        lock()   { this._osc(800, 0.08, 'sine', 0.07); setTimeout(() => this._osc(1200, 0.1, 'sine', 0.06), 80); }
+        warn()   { this._osc(200, 0.25, 'sawtooth', 0.05, 120); }
+        glitch() { this._osc(80, 0.06, 'square', 0.04); }
+        blink()  { this._osc(1400, 0.04, 'sine', 0.03, 600); }
+    }
+    const sfx = new SoundEngine();
+
+    // ===== PARTIKEL BACKGROUND =====
+    class ParticleBG {
+        constructor(canvas) {
+            this.c = canvas;
+            this.ctx = canvas.getContext('2d');
+            this.particles = [];
+            this.resize();
+            window.addEventListener('resize', () => this.resize());
+            this._initParticles();
+            this.animate();
+        }
+        resize() {
+            this.c.width = window.innerWidth;
+            this.c.height = window.innerHeight;
+        }
+        _initParticles() {
+            const n = window.innerWidth < 768 ? 35 : 65;
+            this.particles = [];
+            for (let i = 0; i < n; i++) {
+                this.particles.push({
+                    x: Math.random() * this.c.width,
+                    y: Math.random() * this.c.height,
+                    vx: (Math.random() - 0.5) * 0.25,
+                    vy: (Math.random() - 0.5) * 0.25,
+                    r: Math.random() * 1.5 + 0.5,
+                    a: Math.random() * 0.4 + 0.1
+                });
+            }
+        }
+        animate() {
+            const { ctx, c, particles } = this;
+            ctx.clearRect(0, 0, c.width, c.height);
+            for (const p of particles) {
+                p.x += p.vx; p.y += p.vy;
+                if (p.x < 0) p.x = c.width; if (p.x > c.width) p.x = 0;
+                if (p.y < 0) p.y = c.height; if (p.y > c.height) p.y = 0;
+                ctx.fillStyle = `rgba(0,240,255,${p.a})`;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+            }
+            // Koneksi garis tipis
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const d = dist(particles[i], particles[j]);
+                    if (d < 110) {
+                        ctx.strokeStyle = `rgba(0,240,255,${0.06 * (1 - d / 110)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(() => this.animate());
+        }
+    }
+
+    // ===== REFERENSI DOM =====
+    const $ = id => document.getElementById(id);
+    const loader        = $('loader');
+    const terminal      = $('terminal');
+    const progressBar   = $('progressBar');
+    const progressText  = $('progressText');
+    const app           = $('app');
+    const video         = $('webcam');
+    const overlay       = $('overlay');
+    const ctx           = overlay.getContext('2d');
+    const videoFrame    = $('videoFrame');
+    const statusBadge   = $('statusBadge');
+    const lockFlash     = $('lockFlash');
+    const lostOverlay   = $('lostOverlay');
+    const miniTerminal  = $('miniTerminal');
+    const headGrid      = $('headGrid');
+    const emotionPanel  = $('emotionPanel');
+    const smileFill     = $('smileFill');
+    const smilePct      = $('smilePct');
+    const smileLabel    = $('smileLabel');
+    const blinkCountEl  = $('blinkCount');
+
+    // ===== STATE =====
+    let isRunning = false;
+    let faceDetected = false;
+    let wasFaceLost = true; // Untuk trigger efek "lock" pertama kali
+    let blinkTotal = 0;
+    let blinkState = 'open'; // 'open' atau 'closed'
+    let frameCount = 0;
+    let detectionCount = 0;
+    let fpsFrames = 0;
+    let lastFpsTime = performance.now();
+    let currentFps = 0;
+    let sessionStart = 0;
+    let smileSmooth = 0;
+    let stabilityHistory = [];
+    let lastHeadDir = 'center';
+    let radarPulses = [];
+    let scanY = 0;
+
+    // Emosi yang ditampilkan
+    const EMOTIONS = [
+        { key: 'happy',     label: 'HAPPY',     color: '#00ff88' },
+        { key: 'sad',       label: 'SAD',       color: '#0088ff' },
+        { key: 'angry',     label: 'ANGRY',     color: '#ff0040' },
+        { key: 'surprised', label: 'SURPRISED', color: '#ffcc00' },
+        { key: 'fearful',   label: 'FEARFUL',   color: '#b026ff' },
+        { key: 'disgusted', label: 'DISGUSTED', color: '#ff6600' },
+        { key: 'neutral',   label: 'NEUTRAL',   color: '#6a6a8a' },
+    ];
+
+    // Inisialisasi panel emosi
+    EMOTIONS.forEach(emo => {
+        emotionPanel.innerHTML += `
+            <div class="emo-bar-wrap">
+                <span class="emo-label">${emo.label}</span>
+                <div class="emo-bar-bg"><div class="emo-bar-fill" id="emo_${emo.key}" style="background:${emo.color}"></div></div>
+                <span class="emo-val" id="emoV_${emo.key}">0%</span>
+            </div>`;
+    });
+
+    // ===== LOADING / BOOT SEQUENCE =====
+    function addBootLine(text, cls = 'info') {
+        const div = document.createElement('div');
+        div.className = `log-line ${cls}`;
+        div.textContent = text;
+        terminal.appendChild(div);
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function setProgress(pct) {
+        progressBar.style.width = pct + '%';
+        progressText.textContent = Math.round(pct) + '%';
+    }
+
+    async function bootSequence() {
+        addBootLine('NEXUS CORP // FACE TRACKING SYSTEM v4.7.2', 'info');
+        await delay(400);
+        addBootLine('Initializing Neural Face Scanner...', 'info');
+        setProgress(5);
+        await delay(300);
+
+        // Cek ketersediaan face-api
+        if (typeof faceapi === 'undefined') {
+            addBootLine('ERROR: face-api.js failed to load!', 'warn');
+            addBootLine('Please check your internet connection.', 'warn');
+            return false;
+        }
+        addBootLine('face-api.js runtime loaded [OK]', 'ok');
+        setProgress(10);
+        await delay(200);
+
+        // Inisialisasi audio
+        sfx.init();
+        addBootLine('Audio engine initialized [OK]', 'ok');
+        setProgress(15);
+        await delay(200);
+
+        // Loading model: TinyFaceDetector
+        addBootLine('Loading TinyFaceDetector model...', 'info');
+        try {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/');
+            addBootLine('TinyFaceDetector loaded [OK]', 'ok');
+        } catch(e) {
+            addBootLine('TinyFaceDetector FAILED: ' + e.message, 'warn');
+            return false;
+        }
+        setProgress(40);
+        await delay(200);
+
+        // Loading model: FaceLandmark68
+        addBootLine('Loading FaceLandmark68 model...', 'info');
+        try {
+            await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/');
+            addBootLine('FaceLandmark68 loaded [OK]', 'ok');
+        } catch(e) {
+            addBootLine('FaceLandmark68 FAILED: ' + e.message, 'warn');
+            return false;
+        }
+        setProgress(65);
+        await delay(200);
+
+        // Loading model: FaceExpression
+        addBootLine('Loading FaceExpression model...', 'info');
+        try {
+            await faceapi.nets.faceExpressionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/');
+            addBootLine('FaceExpression loaded [OK]', 'ok');
+        } catch(e) {
+            addBootLine('FaceExpression FAILED: ' + e.message, 'warn');
+            return false;
+        }
+        setProgress(85);
+        await delay(200);
+
+        // Akses kamera
+        addBootLine('Requesting camera access...', 'info');
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+            });
+            video.srcObject = stream;
+            await new Promise(r => { video.onloadedmetadata = () => { video.play(); r(); }; });
+            addBootLine(`Camera active [${video.videoWidth}x${video.videoHeight}] [OK]`, 'ok');
+        } catch(e) {
+            addBootLine('Camera access DENIED: ' + e.message, 'warn');
+            return false;
+        }
+        setProgress(95);
+        await delay(200);
+
+        addBootLine('Calibrating biometric sensors...', 'info');
+        await delay(400);
+        setProgress(100);
+        addBootLine('ALL SYSTEMS NOMINAL', 'ok');
+        await delay(500);
+
+        return true;
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // ===== CANVAS SIZING =====
+    function resizeOverlay() {
+        const rect = videoFrame.getBoundingClientRect();
+        overlay.width = rect.width;
+        overlay.height = rect.height;
+    }
+    window.addEventListener('resize', resizeOverlay);
+
+    // ===== FACE DETECTION OPTIONS =====
+    const detectOpts = new faceapi.TinyFaceDetectorOptions({
+        inputSize: 320,
+        scoreThreshold: 0.45
+    });
+
+    // ===== LANDMARK REGION DEFINITIONS =====
+    const LANDMARK_REGIONS = {
+        jaw:        { idx: range(0, 17),   color: '#00f0ff', size: 1.2, glow: 3 },
+        leftBrow:   { idx: range(17, 22),  color: '#00d0dd', size: 1.8, glow: 4 },
+        rightBrow:  { idx: range(22, 27),  color: '#00d0dd', size: 1.8, glow: 4 },
+        noseBridge: { idx: range(27, 31),  color: '#b026ff', size: 1.8, glow: 5 },
+        noseBottom: { idx: range(31, 36),  color: '#9020dd', size: 1.5, glow: 4 },
+        leftEye:    { idx: range(36, 42),  color: '#00ffcc', size: 2.2, glow: 8 },
+        rightEye:   { idx: range(42, 48),  color: '#00ffcc', size: 2.2, glow: 8 },
+        outerLip:   { idx: range(48, 60),  color: '#ff0066', size: 1.8, glow: 6 },
+        innerLip:   { idx: range(60, 68),  color: '#ff3388', size: 1.3, glow: 4 },
+    };
+
+    // ===== HITUNG EYE ASPECT RATIO (EAR) =====
+    function getEAR(positions, eyeIndices) {
+        // eyeIndices: [p1, p2, p3, p4, p5, p6] searah jarum jam
+        const p = eyeIndices.map(i => positions[i]);
+        const v1 = dist(p[1], p[5]);
+        const v2 = dist(p[2], p[4]);
+        const h  = dist(p[0], p[3]);
+        return h > 0 ? (v1 + v2) / (2 * h) : 0;
+    }
+
+    // ===== HITUNG SMILE SCORE =====
+    function getSmileScore(positions) {
+        const mouthW = dist(positions[48], positions[54]);
+        const mouthH = dist(positions[51], positions[57]);
+        return mouthH > 0 ? mouthW / mouthH : 0;
+    }
+
+    // ===== HITUNG ARAH KEPALA =====
+    function getHeadDirection(positions, box) {
+        const nose = positions[30];
+        const cx = box.x + box.width / 2;
+        const cy = box.y + box.height / 2;
+        const relX = (nose.x - cx) / (box.width / 2); // -1..1
+        const relY = (nose.y - cy) / (box.height / 2);
+        const thresh = 0.08;
+
+        let h = 'center', v = 'center';
+        if (relX < -thresh) h = 'right';  // Hidung geser kiri = kepala belok kanan
+        else if (relX > thresh) h = 'left';
+        if (relY < -thresh) v = 'up';
+        else if (relY > thresh) v = 'down';
+
+        return { h, v, relX, relY };
+    }
+
+    // ===== GAMBAR HUD DI CANVAS =====
+    function drawNeonBox(x, y, w, h, confidence, time) {
+        const cLen = Math.max(15, Math.min(30, w * 0.08));
+        const shimmer = 0.65 + 0.35 * Math.sin(time * 4);
+
+        ctx.save();
+        ctx.globalAlpha = shimmer;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#00f0ff';
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 2;
+
+        // Sudut-sudut bracket
+        const corners = [
+            [x, y + cLen, x, y, x + cLen, y],
+            [x + w - cLen, y, x + w, y, x + w, y + cLen],
+            [x, y + h - cLen, x, y + h, x + cLen, y + h],
+            [x + w - cLen, y + h, x + w, y + h, x + w, y + h - cLen],
+        ];
+        for (const c of corners) {
+            ctx.beginPath();
+            ctx.moveTo(c[0], c[1]);
+            ctx.lineTo(c[2], c[3]);
+            ctx.lineTo(c[4], c[5]);
+            ctx.stroke();
+        }
+
+        // Border dashed halus
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.15;
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 6]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+
+        ctx.restore();
+    }
+
+    function drawLandmarks(positions, sx, sy) {
+        ctx.save();
+        for (const [name, reg] of Object.entries(LANDMARK_REGIONS)) {
+            ctx.fillStyle = reg.color;
+            ctx.shadowBlur = reg.glow;
+            ctx.shadowColor = reg.color;
+            for (const i of reg.idx) {
+                const px = positions[i].x * sx;
+                const py = positions[i].y * sy;
+                ctx.beginPath();
+                ctx.arc(px, py, reg.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+
+    function drawCrosshair(x, y, time) {
+        const sz = 22;
+        const gap = 6;
+        const pulse = 0.4 + 0.2 * Math.sin(time * 5);
+        ctx.save();
+        ctx.strokeStyle = `rgba(0,240,255,${pulse})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x - sz, y); ctx.lineTo(x - gap, y);
+        ctx.moveTo(x + gap, y); ctx.lineTo(x + sz, y);
+        ctx.moveTo(x, y - sz); ctx.lineTo(x, y - gap);
+        ctx.moveTo(x, y + gap); ctx.lineTo(x, y + sz);
+        ctx.stroke();
+        // Titik pusat
+        ctx.fillStyle = '#00f0ff';
+        ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
+    function drawTargetLabel(x, y, confidence) {
+        ctx.save();
+        ctx.font = '700 11px Orbitron, sans-serif';
+        ctx.fillStyle = '#00f0ff';
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = '#00f0ff';
+        ctx.fillText('SUBJECT-NX4721', x, y - 22);
+        ctx.shadowBlur = 0;
+        ctx.font = '10px "Share Tech Mono", monospace';
+        ctx.fillStyle = 'rgba(0,240,255,0.6)';
+        ctx.fillText(`CONF: ${(confidence * 100).toFixed(1)}%`, x, y - 10);
+        ctx.restore();
+    }
+
+    function drawRadarPulses(time) {
+        for (let i = radarPulses.length - 1; i >= 0; i--) {
+            const p = radarPulses[i];
+            p.r += 1.5;
+            p.a -= 0.015;
+            if (p.a <= 0) { radarPulses.splice(i, 1); continue; }
+            ctx.save();
+            ctx.strokeStyle = `rgba(0,240,255,${p.a})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    function drawDataCoordinates(x, y, w, h) {
+        ctx.save();
+        ctx.font = '9px "Share Tech Mono", monospace';
+        ctx.fillStyle = 'rgba(176,38,255,0.5)';
+        ctx.fillText(`X:${Math.round(x)} Y:${Math.round(y)}`, x + w + 8, y + 14);
+        ctx.fillText(`W:${Math.round(w)} H:${Math.round(h)}`, x + w + 8, y + 26);
+        ctx.restore();
+    }
+
+    // ===== UPDATE UI PANELS =====
+    function updateHeadGrid(h, v) {
+        const cells = headGrid.querySelectorAll('.head-cell');
+        cells.forEach(c => c.classList.remove('active'));
+        // Petakan arah ke grid cell
+        const map = {
+            'center':    'center',
+            'up':        'up',
+            'down':      'down',
+            'left':      'left',
+            'right':     'right',
+        };
+        if (h !== 'center' && v !== 'center') {
+            const combo = v + '-' + (h === 'right' ? 'left' : h === 'left' ? 'right' : h);
+            // Arah diagonal berdasarkan kombinasi
+            if (v === 'up' && h === 'left') activateCell('up-left');
+            else if (v === 'up' && h === 'right') activateCell('up-right');
+            else if (v === 'down' && h === 'left') activateCell('down-left');
+            else if (v === 'down' && h === 'right') activateCell('down-right');
+        } else {
+            if (map[h]) activateCell(map[h]);
+            if (map[v]) activateCell(map[v]);
+        }
+        if (h === 'center' && v === 'center') activateCell('center');
+    }
+
+    function activateCell(dir) {
+        const cell = headGrid.querySelector(`[data-dir="${dir}"]`);
+        if (cell) cell.classList.add('active');
+    }
+
+    function updateEmotions(expressions) {
+        if (!expressions) return;
+        for (const emo of EMOTIONS) {
+            const val = expressions[emo.key] || 0;
+            const pct = Math.round(val * 100);
+            const bar = $(`emo_${emo.key}`);
+            const valEl = $(`emoV_${emo.key}`);
+            if (bar) bar.style.width = pct + '%';
+            if (valEl) valEl.textContent = pct + '%';
+        }
+    }
+
+    function updateSmile(score) {
+        // score biasanya 3-7, normalisasi ke 0-100
+        const normalized = clamp((score - 3.5) / 4, 0, 1);
+        smileSmooth = lerp(smileSmooth, normalized, 0.15);
+        const pct = Math.round(smileSmooth * 100);
+        smileFill.style.width = pct + '%';
+        smilePct.textContent = pct + '%';
+        if (pct > 55) {
+            smileLabel.classList.add('detected');
+            smileLabel.querySelector('span').textContent = 'SMILE DETECTED';
+        } else {
+            smileLabel.classList.remove('detected');
+            smileLabel.querySelector('span').textContent = 'CONFIDENCE';
+        }
+    }
+
+    function updateStats(latency, confidence) {
+        $('statFps').textContent = currentFps;
+        $('statLatency').textContent = Math.round(latency) + ' ms';
+        $('statConf').textContent = confidence ? (confidence * 100).toFixed(1) + '%' : '--';
+        $('statRes').textContent = video.videoWidth + 'x' + video.videoHeight;
+
+        // Stabilitas: variansi confidence terakhir
+        if (confidence) {
+            stabilityHistory.push(confidence);
+            if (stabilityHistory.length > 30) stabilityHistory.shift();
+            const mean = stabilityHistory.reduce((a,b) => a+b, 0) / stabilityHistory.length;
+            const variance = stabilityHistory.reduce((a,b) => a + (b-mean)**2, 0) / stabilityHistory.length;
+            const stabPct = Math.round((1 - Math.min(variance * 10, 1)) * 100);
+            $('statStab').textContent = stabPct + '%';
+        }
+    }
+
+    function updateSession() {
+        if (!sessionStart) return;
+        const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+        const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const s = String(elapsed % 60).padStart(2, '0');
+        $('sessTime').textContent = m + ':' + s;
+        $('sessFrames').textContent = frameCount;
+        $('sessDetections').textContent = detectionCount;
+        $('bioFreq').textContent = currentFps + ' Hz';
+    }
+
+    function updateBiometric() {
+        $('bioHash').textContent = randomHex(8);
+        // Threat level berdasarkan emosi
+        const angryBar = $('emo_angry');
+        const angryW = angryBar ? parseFloat(angryBar.style.width) || 0 : 0;
+        const threatEl = $('bioThreat');
+        if (angryW > 60) {
+            threatEl.textContent = 'HIGH';
+            threatEl.className = 'stat-value red';
+        } else if (angryW > 30) {
+            threatEl.textContent = 'MEDIUM';
+            threatEl.className = 'stat-value';
+            threatEl.style.color = 'var(--yellow)';
+        } else {
+            threatEl.textContent = 'LOW';
+            threatEl.className = 'stat-value green';
+            threatEl.style.color = '';
+        }
+    }
+
+    // ===== MINI TERMINAL LOG =====
+    function addLog(text, cls = '') {
+        const div = document.createElement('div');
+        if (cls) div.className = cls;
+        div.textContent = `[${timestamp()}] ${text}`;
+        miniTerminal.appendChild(div);
+        if (miniTerminal.children.length > 50) miniTerminal.removeChild(miniTerminal.firstChild);
+        miniTerminal.scrollTop = miniTerminal.scrollHeight;
+    }
+
+    // ===== FACE LOST / DETECTED HANDLERS =====
+    function onFaceDetected(confidence) {
+        if (wasFaceLost) {
+            // Pertama kali setelah hilang: efek lock
+            wasFaceLost = false;
+            sfx.lock();
+            lockFlash.classList.add('active');
+            setTimeout(() => lockFlash.classList.remove('active'), 300);
+            addLog('Target acquired — LOCKED', 'log-ok');
+            detectionCount++;
+        }
+        faceDetected = true;
+        statusBadge.textContent = 'TARGET LOCKED';
+        statusBadge.className = 'status-badge locked';
+        lostOverlay.classList.remove('active');
+        videoFrame.classList.remove('glitching');
+    }
+
+    function onFaceLost() {
+        if (!wasFaceLost) {
+            wasFaceLost = true;
+            sfx.warn();
+            videoFrame.classList.add('glitching');
+            addLog('Target lost — REACQUIRING', 'log-err');
+        }
+        faceDetected = false;
+        statusBadge.textContent = 'TARGET LOST';
+        statusBadge.className = 'status-badge lost';
+        lostOverlay.classList.add('active');
+    }
+
+    // ===== MAIN DETECTION LOOP =====
+    async function detectLoop() {
+        if (!isRunning) return;
+
+        const t0 = performance.now();
+
+        try {
+            const det = await faceapi.detectSingleFace(video, detectOpts)
+                .withFaceLandmarks()
+                .withFaceExpressions();
+
+            const latency = performance.now() - t0;
+            const time = performance.now() * 0.001;
+
+            // FPS calculation
+            fpsFrames++;
+            if (performance.now() - lastFpsTime >= 1000) {
+                currentFps = fpsFrames;
+                fpsFrames = 0;
+                lastFpsTime = performance.now();
+            }
+            frameCount++;
+
+            // Resize canvas jika perlu
+            if (overlay.width !== videoFrame.clientWidth || overlay.height !== videoFrame.clientHeight) {
+                resizeOverlay();
+            }
+
+            const cw = overlay.width;
+            const ch = overlay.height;
+            const sx = cw / video.videoWidth;
+            const sy = ch / video.videoHeight;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, cw, ch);
+
+            if (det) {
+                onFaceDetected(det.detection.score);
+
+                const box = det.detection.box;
+                const positions = det.landmarks.positions;
+                const expressions = det.expressions;
+
+                // Skala koordinat
+                const bx = box.x * sx, by = box.y * sy;
+                const bw = box.width * sx, bh = box.height * sy;
+                const cx = bx + bw / 2, cy = by + bh / 2;
+
+                // Gambar radar pulse (tambah periodik)
+                if (Math.random() < 0.02) {
+                    radarPulses.push({ x: cx, y: cy, r: 10, a: 0.6 });
+                }
+                drawRadarPulses(time);
+
+                // Gambar elemen HUD
+                drawNeonBox(bx, by, bw, bh, det.detection.score, time);
+                drawLandmarks(positions, sx, sy);
+                drawCrosshair(cx, cy, time);
+                drawTargetLabel(bx, by, det.detection.score);
+                drawDataCoordinates(bx, by, bw, bh);
+
+                // === Smile Detection ===
+                const smileScore = getSmileScore(positions);
+                updateSmile(smileScore);
+
+                // === Blink Detection ===
+                const leftEAR = getEAR(positions, [36, 37, 38, 39, 40, 41]);
+                const rightEAR = getEAR(positions, [42, 43, 44, 45, 46, 47]);
+                const avgEAR = (leftEAR + rightEAR) / 2;
+                const EAR_THRESHOLD = 0.22;
+
+                if (blinkState === 'open' && avgEAR < EAR_THRESHOLD) {
+                    blinkState = 'closed';
+                    blinkTotal++;
+                    blinkCountEl.textContent = blinkTotal;
+                    sfx.blink();
+                    addLog(`Blink detected (#${blinkTotal})`, 'log-info');
+                } else if (blinkState === 'closed' && avgEAR >= EAR_THRESHOLD) {
+                    blinkState = 'open';
+                }
+
+                // === Head Direction ===
+                const headDir = getHeadDirection(positions, box);
+                updateHeadGrid(headDir.h, headDir.v);
+                if (headDir.h + '-' + headDir.v !== lastHeadDir) {
+                    lastHeadDir = headDir.h + '-' + headDir.v;
+                    if (headDir.h !== 'center' || headDir.v !== 'center') {
+                        addLog(`Head: ${headDir.v.toUpperCase()} ${headDir.h.toUpperCase()}`, 'log-info');
+                    }
+                }
+
+                // === Emotions ===
+                updateEmotions(expressions);
+                const topEmo = Object.entries(expressions).sort((a,b) => b[1] - a[1])[0];
+                if (topEmo && topEmo[0] !== 'neutral' && topEmo[1] > 0.5) {
+                    // Tidak log terlalu sering, hanya saat mendominasi
+                }
+
+                // === Update Stats ===
+                updateStats(latency, det.detection.score);
+                updateBiometric();
+
+            } else {
+                onFaceLost();
+                drawRadarPulses(time);
+                updateStats(performance.now() - t0, null);
+            }
+
+            // Update session setiap ~30 frame
+            if (frameCount % 30 === 0) updateSession();
+
+        } catch(e) {
+            // Silent catch untuk menghindari crash loop
+        }
+
+        requestAnimationFrame(detectLoop);
+    }
+
+    // ===== INISIALISASI APLIKASI =====
+    async function init() {
+        // Mulai background particles
+        new ParticleBG($('bgCanvas'));
+
+        // Boot sequence
+        const success = await bootSequence();
+        if (!success) {
+            addBootLine('FATAL ERROR — System halted.', 'warn');
+            return;
+        }
+
+        // Resize overlay sebelum mulai
+        await delay(100);
+        resizeOverlay();
+
+        // Transisi ke app
+        loader.classList.add('hidden');
+        await delay(800);
+        app.style.display = 'flex';
+        requestAnimationFrame(() => app.classList.add('visible'));
+
+        sessionStart = Date.now();
+        isRunning = true;
+        addLog('System online — scanning initiated', 'log-ok');
+        sfx.scan();
+
+        // Mulai loop deteksi
+        detectLoop();
+
+        // Update hash biometric periodik
+        setInterval(() => { $('bioHash').textContent = randomHex(8); }, 3000);
+    }
+
+    // Jalankan setelah DOM siap
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    </script>
+</body>
+</html>
